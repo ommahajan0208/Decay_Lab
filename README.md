@@ -81,22 +81,32 @@ This matters because if relevance is zero, the final score is zero. Strong but u
 
 We started with a single exponential decay function. That was simple, but it assumed every memory forgets in the same way.
 
-Now the project uses a weighted ensemble of decay models:
+Now the project uses a weighted ensemble of three decay models, with weights determined by the active Brain Profile. The default (Smart Brain) ensemble is:
 
 ```text
 ensemble_strength =
-  0.50 * exponential_decay
-  0.30 * power_law_decay
+  0.40 * hlr_decay          (Half-Life Regression)
+  0.40 * power_law_decay
   0.20 * reinforcement_decay
 ```
 
-Then retrieval combines that ensemble strength with query relevance:
+The Dumb Brain profile uses a more aggressive configuration:
 
 ```text
-final_score = lexical_relevance * ensemble_strength
+ensemble_strength =
+  0.70 * hlr_decay
+  0.20 * power_law_decay
+  0.10 * reinforcement_decay
 ```
 
-We also added a small relevance threshold in the app so totally unrelated memories are hidden from the CLI output.
+Retrieval combines that ensemble strength with query relevance. When `sentence-transformers` is installed, relevance is a blend of semantic and lexical signals:
+
+```text
+relevance = 0.70 * semantic_score + 0.30 * lexical_score
+final_score = relevance * ensemble_strength
+```
+
+Without `sentence-transformers`, the system falls back to pure lexical (Jaccard) relevance. A small relevance threshold filters completely unrelated memories from the output.
 
 ## Decay Models
 
@@ -108,6 +118,22 @@ decay_lab/decay_models.py
 
 They were originally split into multiple files, but we collapsed them into one file to keep the project easier to understand.
 
+### HLRDecay
+
+Half-Life Regression (Settles and Meeder, 2016). The primary model used by all Brain Profiles.
+
+```text
+strength * 2 ^ (-age / h)
+```
+
+Where `h` is a predicted half-life computed from recall history:
+
+```text
+h = 2 ^ (bias + recall_weight * log(1 + recall_count))
+```
+
+This means a memory that has been recalled many times gets a longer half-life, so it decays more slowly. It is the most cognitively realistic model in the ensemble.
+
 ### ExponentialDecay
 
 Classic time-based forgetting:
@@ -116,7 +142,7 @@ Classic time-based forgetting:
 strength * exp(-lambda * age)
 ```
 
-This drops quickly over time. It is useful for temporary facts, recent chat details, or memories that should fade unless reinforced.
+This drops quickly over time. It is useful for temporary facts, recent chat details, or memories that should fade unless reinforced. In earlier versions of the project this was the primary decay model; it has since been superseded by HLRDecay.
 
 ### PowerLawDecay
 
@@ -223,38 +249,40 @@ Wraps the decay model system behind one stable API:
 effective_strength(memory, now=None)
 ```
 
-By default it creates this ensemble:
+The engine selects weights and decay parameters based on the active `BrainProfile`. Three built-in profiles are defined:
 
 ```text
-50% ExponentialDecay
-30% PowerLawDecay
-20% ReinforcementDecay
+SMART_BRAIN:    40% HLRDecay / 40% PowerLawDecay / 20% ReinforcementDecay
+DUMB_BRAIN:     70% HLRDecay / 20% PowerLawDecay / 10% ReinforcementDecay
+ADAPTIVE_BRAIN: weights are dynamically tuned by the ContextualBandit
 ```
 
 Other code does not need to know the details of the ensemble. It just asks the engine for effective strength.
 
 ### decay_lab/retrieval.py
 
-Ranks memories for a query.
+Ranks memories for a query using a 2-stage neural retrieval pipeline.
 
-Current retrieval behavior:
+Stage 1 - Bi-Encoder retrieval:
 
-1. Tokenize the query.
-2. Tokenize each memory.
-3. Compute lexical relevance using Jaccard overlap.
+1. Encode the query and all memories using Sentence-BERT (`all-MiniLM-L6-v2`).
+2. Compute cosine similarity scores (semantic relevance).
+3. Blend with Jaccard lexical relevance: `rel = 0.7 * semantic + 0.3 * lexical`.
 4. Skip memories below `min_relevance`.
 5. Compute ensemble strength with `DecayEngine`.
-6. Compute final score:
+6. Compute candidate score: `score = relevance * strength`.
+7. Sort and keep top 20 candidates.
 
-```text
-score = relevance * strength
-```
+Stage 2 - Cross-Encoder re-ranking:
 
-7. Sort by score.
-8. Touch returned memories by updating `last_accessed_at`.
-9. Increment `metadata["recall_count"]`.
+8. Score each `(query, memory)` pair with a BERT Cross-Encoder (`ms-marco-MiniLM-L-6-v2`).
+9. Convert logit to a 0-1 probability via sigmoid.
+10. Recompute final score: `score = cross_encoder_relevance * strength`.
+11. Sort by final score and return top `limit` results.
 
-This is where relevance and memory strength meet.
+After ranking, touch returned memories by updating `last_accessed_at` and incrementing `metadata["recall_count"]`.
+
+When `sentence-transformers` is not installed, the pipeline degrades gracefully to pure lexical (Jaccard) relevance with no re-ranking.
 
 ### decay_lab/visualization.py
 
@@ -269,9 +297,13 @@ Important note: this is not query-specific ranking. It shows strongest memories 
 
 ### decay_lab/evaluator.py
 
-Evaluation helper module.
+Benchmark harness for measuring and optimizing retrieval quality.
 
-This file is for measuring retrieval behavior and comparing outputs. It is useful as the project grows from a demo into experiments.
+It supports:
+
+- `EvalExample`: a (query, relevant_ids) pair used as ground truth.
+- `Evaluator.evaluate(examples, k)`: runs all examples through the retriever and returns `EvalMetrics` containing Precision@K, Recall@K, MRR@K, and MAP@K.
+- `Evaluator.optimize_weights(examples, k, metric)`: grid-searches over `semantic_alpha` values to find the retriever configuration that maximizes a chosen metric.
 
 ### decay_lab/tests/test_decay.py
 
@@ -279,13 +311,19 @@ Unit tests for the core behavior.
 
 It currently checks:
 
+- Engine produces monotonically decreasing strength over time.
+- Age calculation uses `last_accessed_at` as anchor when present.
 - Exponential decay decreases over time.
 - Power-law decay decreases over time.
 - Reinforcement boosts recalled memories.
 - Ensemble weights normalize correctly.
 - Unrelated memories are filtered by minimum relevance.
 - Retrieval ranks by `relevance * ensemble_strength`.
-- Retrieval increments `recall_count`.
+- Retrieval increments `recall_count` and updates `last_accessed_at`.
+- Lexical relevance returns only matching memories.
+- Retrieval returns all matching memories up to the limit.
+- `Evaluator.evaluate` computes correct Precision@K, Recall@K, MRR@K, and MAP@K.
+- `Evaluator.optimize_weights` returns a valid `semantic_alpha` configuration.
 
 Run tests from the workspace root:
 
@@ -346,6 +384,7 @@ Decay_Lab/
   decay_lab/
     app.py
     bandit.py
+    dashboard.html
     decay_engine.py
     decay_models.py
     evaluator.py
@@ -359,8 +398,11 @@ Decay_Lab/
     docs/
       quickstart.md
     simulations/
+      __init__.py    (student simulation engine)
+      student.py
     tests/
       test_decay.py
+    web/             (static files served by Flask)
   requirements.txt
   README.md
 ```
