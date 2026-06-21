@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Decay Lab — Neuroscience Simulator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app-container">
+
+    <!-- HEADER -->
+    <header class="glass-panel header">
+        <div class="header-top">
+            <div class="brand">
+                <h1>🧠 Decay Lab</h1>
+                <p>Neuroscience Memory Simulator</p>
+            </div>
+            <nav class="tab-nav">
+                <button class="tab-btn active" data-tab="live">📊 Live Memory</button>
+                <button class="tab-btn" data-tab="race">🏁 Brain Race</button>
+                <button class="tab-btn" data-tab="bandit">🎰 RL Bandit</button>
+                <button class="tab-btn" data-tab="simulation">🎓 Simulations</button>
+            </nav>
+            <div class="profile-toggle">
+                <label>Profile:</label>
+                <select id="brain-profile">
+                    <option value="smart">🧠 Smart Brain</option>
+                    <option value="dumb">🤖 Dumb Brain</option>
+                    <option value="adaptive">🎲 Adaptive (RL)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- TIME CONTROL STRIP -->
+        <div class="time-strip">
+            <div class="sim-clock">
+                <span class="clock-icon">🕐</span>
+                <span id="sim-clock-display">Day 0, 00:00</span>
+                <span class="clock-sub" id="sim-hours-display">(+0.0h)</span>
+            </div>
+            <div class="time-controls">
+                <button class="time-btn" data-hours="1">+1h</button>
+                <button class="time-btn" data-hours="6">+6h</button>
+                <button class="time-btn" data-hours="24">+1 Day</button>
+                <button class="time-btn" data-hours="72">+3 Days</button>
+                <button class="time-btn" data-hours="168">+1 Week</button>
+                <button class="sleep-btn" id="sleep-btn">🌙 Sleep (+8h)</button>
+                <div class="autoplay-control">
+                    <button class="autoplay-btn" id="autoplay-btn">▶ Play</button>
+                    <select id="autoplay-speed">
+                        <option value="1">1x (1s=1h)</option>
+                        <option value="6">6x (1s=6h)</option>
+                        <option value="24" selected>24x (1s=1d)</option>
+                    </select>
+                </div>
+                <button class="reset-btn" id="reset-time-btn">⏮ Reset</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ─── TAB: LIVE MEMORY ─── -->
+    <div id="tab-live" class="tab-panel">
+        <div class="live-grid">
+
+            <!-- Decay Chart + Ebbinghaus -->
+            <section class="glass-panel">
+                <div class="section-header">
+                    <h2>📉 Memory Decay Trajectories</h2>
+                    <div class="chart-toggles">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="toggle-ebbinghaus" checked>
+                            📊 Ebbinghaus Overlay
+                        </label>
+                        <button id="refresh-chart-btn" class="btn">↺ Refresh</button>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="decayChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Right column: Search + Event Feed -->
+            <div class="right-column">
+                <!-- Search -->
+                <section class="glass-panel">
+                    <h2>🔍 Retrieve &amp; Reinforce</h2>
+                    <div class="search-box">
+                        <input type="text" id="search-input" placeholder="Search memories...">
+                        <button id="search-btn" class="btn primary-btn">Search</button>
+                    </div>
+                    <!-- Add Memory -->
+                    <div class="search-box" style="margin-top:0.5rem">
+                        <input type="text" id="add-memory-input" placeholder="Add new memory...">
+                        <button id="add-memory-btn" class="btn" style="background:rgba(16,185,129,0.3);border-color:#10b981">+ Add</button>
+                    </div>
+                    <div id="search-results" class="results-container">
+                        <div class="empty-state">Search or add memories to begin.</div>
+                    </div>
+                </section>
+
+                <!-- Event Feed -->
+                <section class="glass-panel event-feed-panel">
+                    <h2>📜 Live Event Feed</h2>
+                    <div id="event-feed" class="event-feed">
+                        <div class="event-item event-info">🚀 Decay Lab initialized. Start the simulation!</div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Memory Health Grid -->
+        <section class="glass-panel">
+            <div class="section-header">
+                <h2>💚 Memory Health Overview</h2>
+                <span id="memory-count-badge" class="count-badge">0 alive</span>
+            </div>
+            <div id="health-grid" class="health-grid"></div>
+        </section>
+
+        <!-- Memory Graveyard -->
+        <section class="glass-panel graveyard-panel">
+            <div class="section-header">
+                <h2>☠️ Memory Graveyard</h2>
+                <span id="graveyard-count" class="count-badge dead-badge">0 pruned</span>
+            </div>
+            <div id="graveyard-list" class="graveyard-list">
+                <div class="empty-state">No memories have been pruned yet. Fast-forward time to watch the Dumb Brain forget!</div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ─── TAB: BRAIN RACE ─── -->
+    <div id="tab-race" class="tab-panel hidden">
+        <section class="glass-panel">
+            <div class="section-header">
+                <h2>🏁 Brain Race — Live Split-Screen</h2>
+                <button id="refresh-race-btn" class="btn">↺ Refresh</button>
+            </div>
+            <div id="race-grid" class="race-grid">
+                <div class="race-column" id="race-smart">
+                    <div class="race-header smart-header">🧠 Smart Brain</div>
+                    <div class="race-stats" id="race-smart-stats"></div>
+                    <div class="race-memories" id="race-smart-memories"></div>
+                </div>
+                <div class="race-column" id="race-dumb">
+                    <div class="race-header dumb-header">🤖 Dumb Brain</div>
+                    <div class="race-stats" id="race-dumb-stats"></div>
+                    <div class="race-memories" id="race-dumb-memories"></div>
+                </div>
+                <div class="race-column" id="race-adaptive">
+                    <div class="race-header adaptive-header">🎲 Adaptive Brain</div>
+                    <div class="race-stats" id="race-adaptive-stats"></div>
+                    <div class="race-memories" id="race-adaptive-memories"></div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ─── TAB: RL BANDIT DASHBOARD ─── -->
+    <div id="tab-bandit" class="tab-panel hidden">
+        <div class="bandit-grid">
+            <section class="glass-panel">
+                <h2>🎰 RL Contextual Bandit — Live State</h2>
+                <p class="sim-subtitle">Watch the AI learn which decay model works best in real-time based on your feedback.</p>
+
+                <div class="bandit-section">
+                    <h3>Internal Scores (learned from feedback)</h3>
+                    <div id="bandit-scores"></div>
+                </div>
+
+                <div class="bandit-section">
+                    <h3>Output Weights (Softmax distribution)</h3>
+                    <div id="bandit-weights"></div>
+                </div>
+
+                <div class="bandit-section">
+                    <h3>🌡️ Bandit Temperature</h3>
+                    <p class="bandit-hint">Higher = more random exploration. Lower = exploits current best model.</p>
+                    <div class="slider-row">
+                        <span>❄️ Exploit</span>
+                        <input type="range" id="temp-slider" min="0.1" max="5.0" step="0.1" value="1.0">
+                        <span>🔥 Explore</span>
+                        <span id="temp-value" class="slider-val">1.0</span>
+                    </div>
+                    <div class="slider-row" style="margin-top:0.75rem">
+                        <span>LR:</span>
+                        <input type="range" id="lr-slider" min="0.01" max="2.0" step="0.01" value="0.5">
+                        <span id="lr-value" class="slider-val">0.50</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="glass-panel">
+                <h2>📖 Feedback History</h2>
+                <div id="bandit-history" class="bandit-history"></div>
+
+                <div class="bandit-section" style="margin-top:1.5rem">
+                    <h3>Weight Evolution Chart</h3>
+                    <div style="height:250px"><canvas id="banditChart"></canvas></div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- ─── TAB: SIMULATION ─── -->
+    <div id="tab-simulation" class="tab-panel hidden">
+        <section class="glass-panel sim-header-card">
+            <div class="sim-hero">
+                <div>
+                    <h2>🎓 The Student — Spaced Repetition Simulation</h2>
+                    <p class="sim-subtitle">10 exam topics. Study sessions on Day 1 &amp; Day 3. Exam on Day 7.</p>
+                    <p class="sim-subtitle">Watch Smart Brain vs Dumb Brain compete on identical study schedules.</p>
+                </div>
+                <button id="run-simulation-btn" class="btn primary-btn sim-run-btn">▶ Run Simulation</button>
+            </div>
+        </section>
+
+        <div id="sim-results" class="hidden">
+            <div class="sim-score-grid">
+                <div class="sim-score-card smart-card">
+                    <div class="sim-brain-label">🧠 Smart Brain</div>
+                    <div class="sim-score" id="smart-score">—</div>
+                    <div class="sim-score-label">remembered on Exam Day</div>
+                </div>
+                <div class="vs-divider">VS</div>
+                <div class="sim-score-card dumb-card">
+                    <div class="sim-brain-label">🤖 Dumb Brain</div>
+                    <div class="sim-score" id="dumb-score">—</div>
+                    <div class="sim-score-label">remembered on Exam Day</div>
+                </div>
+            </div>
+
+            <div class="glass-panel">
+                <div class="section-header">
+                    <h2>Day-by-Day Memory Strength</h2>
+                    <div class="sim-legend">
+                        <span class="legend-dot smart-dot"></span> Smart (solid)
+                        &nbsp;
+                        <span class="legend-dot dumb-dot"></span> Dumb (dashed)
+                    </div>
+                </div>
+                <div class="chart-container tall-chart"><canvas id="simChart"></canvas></div>
+            </div>
+
+            <div class="glass-panel">
+                <h2>📋 Topic-by-Topic Exam Report</h2>
+                <div class="study-schedule-note" id="schedule-note"></div>
+                <div class="table-wrapper">
+                    <table class="sim-table">
+                        <thead>
+                            <tr>
+                                <th>Topic</th>
+                                <th>Recalled On</th>
+                                <th>Smart Strength</th>
+                                <th>Dumb Strength</th>
+                                <th>Smart ✓</th>
+                                <th>Dumb ✓</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sim-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="sim-loading" class="hidden">
+            <div class="loading-card glass-panel">
+                <div class="spinner"></div>
+                <p>Simulating 7 days of study sessions...</p>
+            </div>
+        </div>
+    </div>
+
+</div><!-- end app-container -->
+
+<script src="https://unpkg.com/chart.js/dist/chart.umd.js"></script>
+<script src="/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decay Lab - AI Memory Simulator</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Tailwind for grid/structure, custom CSS for premium styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    /* Premium Glassmorphic Styles */
+    body {
+      background: radial-gradient(circle at top right, #1e1b4b, #090514);
+      color: #f3f4f6;
+      min-height: 100vh;
+      font-family: 'Inter', sans-serif;
+    }
+    .glass-card {
+      background: rgba(17, 12, 28, 0.65);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+    .glass-input {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #f3f4f6;
+      transition: all 0.2s ease-in-out;
+    }
+    .glass-input:focus {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(99, 102, 241, 0.6);
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+    .glow-purple {
+      box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+    }
+    .glow-indigo {
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+    }
+    .scrollbar-thin::-webkit-scrollbar {
+      width: 6px;
+    }
+    .scrollbar-thin::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+    }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+  </style>
+</head>
+<body class="p-6">
+  <div class="max-w-7xl mx-auto space-y-6">
+    <!-- Header -->
+    <header class="flex justify-between items-center pb-4 border-b border-white/10">
+      <div>
+        <h1 class="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
+          Decay Lab Dashboard
+        </h1>
+        <p class="text-sm text-gray-400 mt-1">Interactive simulation of memory decay, hybrid search, and reinforcement parameters.</p>
+      </div>
+      <div class="flex items-center space-x-3">
+        <span class="text-xs text-gray-400 font-mono">Simulated System Time:</span>
+        <span id="systemTimeLabel" class="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-sm font-mono text-indigo-300">
+          0h (0s)
+        </span>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Left sidebar - Parameters and seeding (lg:col-span-4) -->
+      <aside class="lg:col-span-4 space-y-6">
+        
+        <!-- Controls & Seeding Card -->
+        <div class="glass-card p-5 rounded-2xl space-y-4">
+          <div class="flex justify-between items-center">
+            <h2 class="text-lg font-bold text-gray-100 flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-purple-500 animate-pulse"></span>
+              Memory Database
+            </h2>
+            <div class="flex gap-2">
+              <button onclick="resetMemories()" class="text-xs px-2.5 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-300 rounded-lg transition-all">
+                Reset
+              </button>
+            </div>
+          </div>
+          
+          <div id="memoryList" class="space-y-2 max-h-60 overflow-y-auto scrollbar-thin pr-1">
+            <!-- Dynamically populated memories list -->
+          </div>
+
+          <!-- Add Memory Form -->
+          <div class="pt-3 border-t border-white/5 space-y-2">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Add New Memory</h3>
+            <input type="text" id="newContent" placeholder="Memory content..." class="w-full text-xs p-2 rounded-lg glass-input">
+            <div class="grid grid-cols-2 gap-2">
+              <input type="text" id="newTags" placeholder="Tags e.g. topic:work" class="text-xs p-2 rounded-lg glass-input">
+              <input type="number" id="newStrength" placeholder="Strength (1.0)" step="0.1" value="1.0" class="text-xs p-2 rounded-lg glass-input">
+            </div>
+            <button onclick="addMemory()" class="w-full py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all">
+              Save Memory
+            </button>
+          </div>
+        </div>
+
+        <!-- Ensemble Settings Card -->
+        <div class="glass-card p-5 rounded-2xl space-y-4">
+          <h2 class="text-lg font-bold text-gray-100">Ensemble Weighting</h2>
+          
+          <div class="space-y-4">
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-300">Exponential Decay (Time)</span>
+                <span id="expWeightVal" class="text-indigo-300 font-mono">50%</span>
+              </div>
+              <input type="range" id="expWeight" min="0" max="100" value="50" oninput="adjustWeights('exp')" class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-300">Power Law Decay (Long Tail)</span>
+                <span id="powWeightVal" class="text-indigo-300 font-mono">30%</span>
+              </div>
+              <input type="range" id="powWeight" min="0" max="100" value="30" oninput="adjustWeights('pow')" class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-300">Reinforcement (Recall Boost)</span>
+                <span id="reinfWeightVal" class="text-indigo-300 font-mono">20%</span>
+              </div>
+              <input type="range" id="reinfWeight" min="0" max="100" value="20" oninput="adjustWeights('reinf')" class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-[10px] text-gray-400">
+            <div>
+              <label class="block mb-1">λ (Exp Rate)</label>
+              <input type="number" id="paramLambda" value="0.0001" step="0.00005" onchange="updateParameters()" class="w-full p-1.5 rounded bg-white/5 border border-white/10 text-white font-mono">
+            </div>
+            <div>
+              <label class="block mb-1">α (Power Index)</label>
+              <input type="number" id="paramAlpha" value="0.35" step="0.05" onchange="updateParameters()" class="w-full p-1.5 rounded bg-white/5 border border-white/10 text-white font-mono">
+            </div>
+            <div>
+              <label class="block mb-1">γ (Reinf Boost)</label>
+              <input type="number" id="paramGamma" value="0.08" step="0.01" onchange="updateParameters()" class="w-full p-1.5 rounded bg-white/5 border border-white/10 text-white font-mono">
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- Center & Right panel (lg:col-span-8) -->
+      <main class="lg:col-span-8 space-y-6">
+        
+        <!-- Timeline Chart Card -->
+        <div class="glass-card p-5 rounded-2xl space-y-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <h2 class="text-lg font-bold text-gray-100">Forgetting Curves (Strength Projection)</h2>
+              <p class="text-xs text-gray-400">Effective strength projection over the next 24 hours.</p>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs text-gray-300">Fast Forward:</span>
+              <div class="inline-flex rounded-lg border border-white/10 p-0.5 bg-white/5 text-xs">
+                <button onclick="fastForward(1)" class="px-2.5 py-1 hover:bg-white/5 rounded-md transition-all font-medium text-indigo-300">+1h</button>
+                <button onclick="fastForward(6)" class="px-2.5 py-1 hover:bg-white/5 rounded-md transition-all font-medium text-indigo-300">+6h</button>
+                <button onclick="fastForward(24)" class="px-2.5 py-1 hover:bg-white/5 rounded-md transition-all font-medium text-indigo-300">+24h</button>
+              </div>
+            </div>
+          </div>
+          <div class="relative h-64 w-full">
+            <canvas id="decayChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Hybrid Search Card -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <!-- Query simulation -->
+          <div class="glass-card p-5 rounded-2xl space-y-4">
+            <h2 class="text-lg font-bold text-gray-100 flex items-center gap-2">
+              Search Simulator
+            </h2>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs text-gray-400 mb-1">Search Query</label>
+                <input type="text" id="queryInput" placeholder="Enter keyword or concept..." oninput="runSearch()" class="w-full text-sm p-2.5 rounded-lg glass-input font-medium">
+              </div>
+
+              <!-- Retrieval parameters -->
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label class="block text-gray-400 mb-1">Lexical Weight</label>
+                  <input type="range" id="lexicalWeight" min="0" max="100" value="50" oninput="adjustRetWeights('lex')" class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                  <div class="flex justify-between mt-1 text-[10px] text-gray-400">
+                    <span>Jaccard</span>
+                    <span id="lexWeightLabel" class="font-mono text-indigo-300">50%</span>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-gray-400 mb-1">Semantic Weight</label>
+                  <input type="range" id="semanticWeight" min="0" max="100" value="50" oninput="adjustRetWeights('sem')" class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                  <div class="flex justify-between mt-1 text-[10px] text-gray-400">
+                    <span>TF-IDF</span>
+                    <span id="semWeightLabel" class="font-mono text-indigo-300">50%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label class="block text-gray-400 mb-1">Min Relevance Filter</label>
+                  <input type="number" id="minRelevance" value="0.01" step="0.05" onchange="runSearch()" class="w-full p-1.5 rounded bg-white/5 border border-white/10 text-white font-mono">
+                </div>
+                <div>
+                  <label class="block text-gray-400 mb-1">Context Boost Tags</label>
+                  <input type="text" id="contextTagsInput" placeholder='{"work": 1.5}' value='{"work": 1.5}' onchange="runSearch()" class="w-full p-1.5 rounded bg-white/5 border border-white/10 text-white font-mono text-xs">
+                </div>
+              </div>
+            </div>
+
+            <!-- Search Results list -->
+            <div id="searchResults" class="space-y-2 pt-2 border-t border-white/5 max-h-48 overflow-y-auto scrollbar-thin">
+              <p class="text-xs text-gray-400 text-center py-4">Type a query above to see ranked matches.</p>
+            </div>
+          </div>
+
+          <!-- Benchmark and Optimization -->
+          <div class="glass-card p-5 rounded-2xl space-y-4">
+            <div class="flex justify-between items-center">
+              <h2 class="text-lg font-bold text-gray-100">Benchmark Evaluator</h2>
+              <button onclick="runBenchmark()" class="text-xs px-2.5 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-300 rounded-lg transition-all font-semibold">
+                Run Test
+              </button>
+            </div>
+            
+            <p class="text-xs text-gray-400">Evaluates against 5 test queries containing relevance ground truth tags.</p>
+
+            <div class="grid grid-cols-2 gap-3 text-center">
+              <div class="p-3 bg-white/5 border border-white/5 rounded-xl">
+                <div id="metricMap" class="text-xl font-bold font-mono text-purple-400">-</div>
+                <div class="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">MAP @ 3</div>
+              </div>
+              <div class="p-3 bg-white/5 border border-white/5 rounded-xl">
+                <div id="metricMrr" class="text-xl font-bold font-mono text-indigo-400">-</div>
+                <div class="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">MRR @ 3</div>
+              </div>
+              <div class="p-3 bg-white/5 border border-white/5 rounded-xl">
+                <div id="metricPrecision" class="text-xl font-bold font-mono text-pink-400">-</div>
+                <div class="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Precision @ 3</div>
+              </div>
+              <div class="p-3 bg-white/5 border border-white/5 rounded-xl">
+                <div id="metricRecall" class="text-xl font-bold font-mono text-teal-400">-</div>
+                <div class="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Recall @ 3</div>
+              </div>
+            </div>
+
+            <!-- Optimizer button -->
+            <button id="optimizeBtn" onclick="runOptimization()" class="w-full py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all flex justify-center items-center gap-2">
+              <svg class="h-4 w-4 animate-spin hidden" id="optimizingSpinner" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Optimize Weights via Grid Search
+            </button>
+            <div id="optimizationResults" class="text-[10px] font-mono text-gray-400 mt-2 bg-black/25 p-2 rounded border border-white/5 hidden"></div>
+          </div>
+
+        </div>
+
+      </main>
+
+    </div>
+  </div>
+
+  <script>
+    // State management
+    let systemTime = 0; // seconds elapsed
+    let memories = [];
+    
+    // Core Parameters
+    let lambda_decay = 0.0001;
+    let alpha = 0.35;
+    let scale_seconds = 3600.0;
+    let gamma = 0.08;
+    
+    // Weights (ensemble and retrieval)
+    let w_exp = 0.50;
+    let w_pow = 0.30;
+    let w_reinf = 0.20;
+    
+    let w_lexical = 0.50;
+    let w_semantic = 0.50;
+    
+    let chartInstance = null;
+
+    // Seeding list
+    const seedMemories = [
+      { id: "m1", content: "I love pizza and italian food", tags: { topic: "food" }, strength: 1.0, created_at: -60 * 60 * 2, last_accessed_at: null, metadata: { recall_count: 0 } },
+      { id: "m2", content: "The weather today is sunny and warm", tags: { topic: "weather" }, strength: 1.0, created_at: -60 * 60 * 6, last_accessed_at: null, metadata: { recall_count: 0 } },
+      { id: "m3", content: "Weekly meeting moved to next Tuesday", tags: { topic: "work" }, strength: 1.2, created_at: -60 * 30, last_accessed_at: null, metadata: { recall_count: 0 } },
+      { id: "m4", content: "Running helps improve cardiovascular health", tags: { topic: "fitness" }, strength: 1.3, created_at: -60 * 60 * 24, last_accessed_at: null, metadata: { recall_count: 0 } },
+      { id: "m5", content: "Study notes: retrieval ranking and pruning", tags: { topic: "ml" }, strength: 1.5, created_at: -60 * 60 * 1, last_accessed_at: null, metadata: { recall_count: 0 } }
+    ];
+
+    // Benchmark gold standard
+    const evalExamples = [
+      { query: "food", relevant_ids: ["m1"] },
+      { query: "sunny weather", relevant_ids: ["m2"] },
+      { query: "meeting next week", relevant_ids: ["m3"] },
+      { query: "ml study", relevant_ids: ["m5"] },
+      { query: "fitness running", relevant_ids: ["m4"] }
+    ];
+
+    // Initial load
+    window.onload = function() {
+      resetMemories();
+      initChart();
+      updateUI();
+    };
+
+    function resetMemories() {
+      systemTime = 0;
+      memories = JSON.parse(JSON.stringify(seedMemories));
+      // adjust created_at to be relative to the starting systemTime (0)
+      updateUI();
+      if (chartInstance) updateChart();
+      runSearch();
+    }
+
+    function updateUI() {
+      document.getElementById("systemTimeLabel").textContent = `${(systemTime / 3600).toFixed(1)}h (${systemTime}s)`;
+      
+      // Update memory list sidebar
+      const listEl = document.getElementById("memoryList");
+      listEl.innerHTML = "";
+      
+      memories.forEach(m => {
+        const effStrength = getEffectiveStrength(m, systemTime);
+        const card = document.createElement("div");
+        card.className = "p-3 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-xl transition-all space-y-1.5";
+        
+        // Tags representation
+        let tagBadges = "";
+        for(let k in m.tags) {
+          tagBadges += `<span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 text-[9px] font-semibold px-2 py-0.5 rounded-full mr-1">${m.tags[k]}</span>`;
+        }
+        
+        card.innerHTML = `
+          <div class="flex justify-between items-start">
+            <span class="font-mono text-xs font-bold text-indigo-400">${m.id}</span>
+            <span class="font-mono text-xs font-bold text-gray-300">S: ${effStrength.toFixed(4)}</span>
+          </div>
+          <p class="text-xs text-gray-200">${m.content}</p>
+          <div class="flex justify-between items-center pt-1.5 text-[9px] text-gray-400">
+            <div class="flex">${tagBadges}</div>
+            <div class="flex items-center gap-2">
+              <span>Recalls: ${m.metadata.recall_count}</span>
+              <button onclick="touchMemory('${m.id}')" class="px-2 py-0.5 bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 font-semibold border border-indigo-500/30 rounded">Recall</button>
+            </div>
+          </div>
+        `;
+        listEl.appendChild(card);
+      });
+    }
+
+    function addMemory() {
+      const content = document.getElementById("newContent").value.trim();
+      const tagsText = document.getElementById("newTags").value.trim();
+      const strengthVal = parseFloat(document.getElementById("newStrength").value) || 1.0;
+      
+      if (!content) return;
+      
+      const id = "m" + (memories.length + 1);
+      
+      // Parse tags e.g. "topic:work" or simple "work"
+      const tags = {};
+      if (tagsText) {
+        if (tagsText.includes(":")) {
+          const parts = tagsText.split(":");
+          tags[parts[0].trim()] = parts[1].trim();
+        } else {
+          tags["topic"] = tagsText;
+        }
+      } else {
+        tags["topic"] = "general";
+      }
+
+      memories.push({
+        id: id,
+        content: content,
+        tags: tags,
+        strength: strengthVal,
+        created_at: systemTime,
+        last_accessed_at: null,
+        metadata: { recall_count: 0 }
+      });
+
+      document.getElementById("newContent").value = "";
+      document.getElementById("newTags").value = "";
+      document.getElementById("newStrength").value = "1.0";
+      
+      updateUI();
+      updateChart();
+      runSearch();
+    }
+
+    function touchMemory(id) {
+      const m = memories.find(x => x.id === id);
+      if (m) {
+        m.last_accessed_at = systemTime;
+        m.metadata.recall_count += 1;
+        updateUI();
+        updateChart();
+        runSearch();
+      }
+    }
+
+    // Decay logic in JS
+    function getEffectiveStrength(m, nowTime) {
+      const anchor = m.last_accessed_at !== null ? m.last_accessed_at : m.created_at;
+      const age = Math.max(0, nowTime - anchor);
+      
+      // Exponential
+      const expScore = m.strength * Math.exp(-lambda_decay * age);
+      // Power Law
+      const powScore = m.strength * Math.pow(1.0 + (age / scale_seconds), -alpha);
+      // Reinforcement
+      const reinfScore = m.strength * (1.0 + gamma * Math.log1p(m.metadata.recall_count));
+      
+      // Weighted ensemble
+      return w_exp * expScore + w_pow * powScore + w_reinf * reinfScore;
+    }
+
+    function fastForward(hours) {
+      systemTime += hours * 3600;
+      updateUI();
+      updateChart();
+      runSearch();
+    }
+
+    // Tokenize
+    function tokenize(text) {
+      const cleaned = text.toLowerCase().replace(/[^\w\s]/g, "");
+      return cleaned.split(/\s+/).filter(t => t.length > 0);
+    }
+
+    // Lexical (Jaccard) relevance
+    function getJaccardRelevance(query, content) {
+      const qTokens = new Set(tokenize(query));
+      if (qTokens.size === 0) return 0.0;
+      const cTokens = new Set(tokenize(content));
+      
+      let intersection = 0;
+      qTokens.forEach(t => {
+        if (cTokens.has(t)) intersection++;
+      });
+      const union = qTokens.size + cTokens.size - intersection;
+      return union > 0 ? intersection / union : 0.0;
+    }
+
+    // Semantic TF-IDF cosine similarity helper
+    function getTFIDFRelevance(query, docs) {
+      const qTokens = tokenize(query);
+      if (qTokens.length === 0) return docs.map(() => 0.0);
+      
+      const docTokensList = docs.map(d => tokenize(d.content));
+      const N = docs.length;
+      
+      // Vocabulary
+      const vocab = new Set([...qTokens, ...docTokensList.flat()]);
+      
+      // Document frequency
+      const df = {};
+      vocab.forEach(t => {
+        df[t] = docTokensList.filter(tokens => tokens.includes(t)).length;
+      });
+
+      // IDF
+      const idf = {};
+      vocab.forEach(t => {
+        idf[t] = Math.log(1.0 + N / (1.0 + df[t])) + 1.0;
+      });
+
+      // Vectorize query
+      const qVec = {};
+      qTokens.forEach(t => {
+        if (idf[t]) qVec[t] = (qVec[t] || 0) + 1.0;
+      });
+      Object.keys(qVec).forEach(t => { qVec[t] *= idf[t]; });
+      
+      let qNormSq = 0;
+      Object.values(qVec).forEach(val => qNormSq += val * val);
+      const qNorm = Math.sqrt(qNormSq);
+      if (qNorm > 0) {
+        Object.keys(qVec).forEach(t => qVec[t] /= qNorm);
+      }
+
+      // Vectorize docs & compute cosine sim
+      return docs.map((doc, idx) => {
+        const tokens = docTokensList[idx];
+        const dVec = {};
+        tokens.forEach(t => { dVec[t] = (dVec[t] || 0) + 1.0; });
+        Object.keys(dVec).forEach(t => { dVec[t] *= idf[t]; });
+
+        let dNormSq = 0;
+        Object.values(dVec).forEach(val => dNormSq += val * val);
+        const dNorm = Math.sqrt(dNormSq);
+        if (dNorm === 0) return 0.0;
+        
+        Object.keys(dVec).forEach(t => dVec[t] /= dNorm);
+
+        // Dot product
+        let sim = 0.0;
+        Object.keys(qVec).forEach(t => {
+          if (dVec[t]) sim += qVec[t] * dVec[t];
+        });
+        return sim;
+      });
+    }
+
+    // Rank search results
+    function runSearch() {
+      const query = document.getElementById("queryInput").value.trim();
+      const resultsEl = document.getElementById("searchResults");
+      resultsEl.innerHTML = "";
+      
+      if (!query) {
+        resultsEl.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">Type a query above to see ranked matches.</p>';
+        return;
+      }
+
+      // Read filter and context booster configurations
+      const minRel = parseFloat(document.getElementById("minRelevance").value) || 0.0;
+      let contextTags = {};
+      try {
+        contextTags = JSON.parse(document.getElementById("contextTagsInput").value || "{}");
+      } catch(e) {}
+
+      // Calculate semantic similarity vectors
+      const tfidfScores = getTFIDFRelevance(query, memories);
+
+      // Score memories
+      const scored = memories.map((m, idx) => {
+        const lexRel = getJaccardRelevance(query, m.content);
+        const semRel = tfidfScores[idx] || 0.0;
+        const baseRel = w_lexical * lexRel + w_semantic * semRel;
+        
+        // Context boosting
+        let boost = 1.0;
+        for (let tagKey in m.tags) {
+          const tagVal = m.tags[tagKey];
+          if (contextTags[tagVal] !== undefined) {
+            boost = Math.max(boost, contextTags[tagVal]);
+          }
+          const pair = `${tagKey}:${tagVal}`;
+          if (contextTags[pair] !== undefined) {
+            boost = Math.max(boost, contextTags[pair]);
+          }
+        }
+        
+        const boostedRel = baseRel * boost;
+        const strength = getEffectiveStrength(m, systemTime);
+        const score = boostedRel * strength;
+
+        return {
+          memory: m,
+          score: score,
+          relevance: boostedRel,
+          strength: strength,
+          lexRel: lexRel,
+          semRel: semRel,
+          boost: boost
+        };
+      });
+
+      // Filter and Sort
+      const results = scored
+        .filter(r => r.relevance >= minRel)
+        .sort((a, b) => b.score - a.score);
+
+      if (results.length === 0) {
+        resultsEl.innerHTML = '<p class="text-xs text-red-400 text-center py-4">No matching memories above relevance threshold.</p>';
+        return;
+      }
+
+      results.forEach(r => {
+        const m = r.memory;
+        const el = document.createElement("div");
+        el.className = "p-2 bg-indigo-950/20 hover:bg-indigo-900/30 border border-indigo-900/30 rounded-lg text-xs space-y-1 relative cursor-pointer";
+        el.onclick = () => touchMemory(m.id);
+        
+        el.innerHTML = `
+          <div class="flex justify-between items-start font-mono text-[10px]">
+            <span class="font-bold text-indigo-300">${m.id} | Score: ${r.score.toFixed(4)}</span>
+            <span class="text-gray-400">rel=${r.relevance.toFixed(3)} | str=${r.strength.toFixed(3)}</span>
+          </div>
+          <p class="text-gray-300 font-medium">${m.content}</p>
+          <div class="flex justify-between text-[9px] text-gray-500 pt-1 border-t border-white/5 font-mono">
+            <span>Lex: ${r.lexRel.toFixed(2)} | Sem: ${r.semRel.toFixed(2)}</span>
+            <span>Boost: ${r.boost}x (Click to Touch)</span>
+          </div>
+        `;
+        resultsEl.appendChild(el);
+      });
+    }
+
+    // Weight Adjustments
+    function adjustWeights(source) {
+      let expVal = parseInt(document.getElementById("expWeight").value);
+      let powVal = parseInt(document.getElementById("powWeight").value);
+      let reinfVal = parseInt(document.getElementById("reinfWeight").value);
+
+      const total = expVal + powVal + reinfVal;
+      if (total > 0) {
+        w_exp = expVal / total;
+        w_pow = powVal / total;
+        w_reinf = reinfVal / total;
+      } else {
+        w_exp = 0.5; w_pow = 0.3; w_reinf = 0.2;
+      }
+
+      document.getElementById("expWeightVal").textContent = `${(w_exp * 100).toFixed(0)}%`;
+      document.getElementById("powWeightVal").textContent = `${(w_pow * 100).toFixed(0)}%`;
+      document.getElementById("reinfWeightVal").textContent = `${(w_reinf * 100).toFixed(0)}%`;
+
+      updateUI();
+      updateChart();
+      runSearch();
+    }
+
+    function adjustRetWeights(source) {
+      if (source === 'lex') {
+        const val = parseInt(document.getElementById("lexicalWeight").value);
+        w_lexical = val / 100;
+        w_semantic = 1 - w_lexical;
+        document.getElementById("semanticWeight").value = (w_semantic * 100).toFixed(0);
+      } else {
+        const val = parseInt(document.getElementById("semanticWeight").value);
+        w_semantic = val / 100;
+        w_lexical = 1 - w_semantic;
+        document.getElementById("lexicalWeight").value = (w_lexical * 100).toFixed(0);
+      }
+      document.getElementById("lexWeightLabel").textContent = `${(w_lexical * 100).toFixed(0)}%`;
+      document.getElementById("semWeightLabel").textContent = `${(w_semantic * 100).toFixed(0)}%`;
+      runSearch();
+    }
+
+    function updateParameters() {
+      lambda_decay = parseFloat(document.getElementById("paramLambda").value) || 0.0001;
+      alpha = parseFloat(document.getElementById("paramAlpha").value) || 0.35;
+      gamma = parseFloat(document.getElementById("paramGamma").value) || 0.08;
+
+      updateUI();
+      updateChart();
+      runSearch();
+    }
+
+    // Chart.js initialization
+    function initChart() {
+      const ctx = document.getElementById('decayChart').getContext('2d');
+      const steps = 12;
+      const xLabels = [];
+      for (let i = 0; i <= steps; i++) {
+        xLabels.push(`+${i * 2}h`);
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: xLabels,
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#9ca3af', font: { family: 'Inter', size: 10 } }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#9ca3af', font: { family: 'Inter' } }
+            },
+            y: {
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#9ca3af', font: { family: 'Inter' } },
+              min: 0,
+              max: 2.0
+            }
+          }
+        }
+      });
+      updateChart();
+    }
+
+    function updateChart() {
+      if (!chartInstance) return;
+      
+      const horizon = 24 * 3600; // 24 hours
+      const steps = 12;
+      
+      // Color bank for line curves
+      const colors = [
+        '#818cf8', // Indigo
+        '#a78bfa', // Purple
+        '#f472b6', // Pink
+        '#38bdf8', // Light Blue
+        '#4ade80', // Green
+        '#facc15'  // Yellow
+      ];
+
+      const datasets = memories.map((m, idx) => {
+        const dataPoints = [];
+        for (let i = 0; i <= steps; i++) {
+          const evalTime = systemTime + (i / steps) * horizon;
+          dataPoints.push(getEffectiveStrength(m, evalTime));
+        }
+
+        const color = colors[idx % colors.length];
+        return {
+          label: m.id,
+          data: dataPoints,
+          borderColor: color,
+          backgroundColor: color + '22',
+          borderWidth: 2,
+          tension: 0.3,
+          pointRadius: 1
+        };
+      });
+
+      chartInstance.data.datasets = datasets;
+      chartInstance.update();
+    }
+
+    // Benchmark Harness Implementation in JS
+    function calculateMetrics(wExp, wPow, wReinf, wLex, wSem) {
+      // Temporary weight override helper
+      const savedExp = w_exp;
+      const savedPow = w_pow;
+      const savedReinf = w_reinf;
+      const savedLex = w_lexical;
+      const savedSem = w_semantic;
+
+      w_exp = wExp;
+      w_pow = wPow;
+      w_reinf = wReinf;
+      w_lexical = wLex;
+      w_semantic = wSem;
+
+      let precisions = [];
+      let recalls = [];
+      let mrrs = [];
+      let maps = [];
+
+      evalExamples.forEach(ex => {
+        // Run rank simulation for ex.query
+        const tfidfScores = getTFIDFRelevance(ex.query, memories);
+        const scored = memories.map((m, idx) => {
+          const lexRel = getJaccardRelevance(ex.query, m.content);
+          const semRel = tfidfScores[idx] || 0.0;
+          const rel = w_lexical * lexRel + w_semantic * semRel;
+          const strength = getEffectiveStrength(m, systemTime);
+          return {
+            id: m.id,
+            score: rel * strength,
+            relevance: rel
+          };
+        });
+
+        // Top 3 results
+        const topk = scored
+          .filter(r => r.relevance >= 0.01)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3);
+
+        const retrievedIds = new Set(topk.map(r => r.id));
+        const relIds = new Set(ex.relevant_ids);
+
+        // TP
+        let tp = 0;
+        retrievedIds.forEach(id => {
+          if (relIds.has(id)) tp++;
+        });
+
+        const precision = tp / 3.0;
+        const recall = relIds.size > 0 ? tp / relIds.size : 0.0;
+
+        precisions.push(precision);
+        recalls.push(recall);
+
+        // MRR
+        let rr = 0.0;
+        for (let i = 0; i < topk.length; i++) {
+          if (relIds.has(topk[i].id)) {
+            rr = 1.0 / (i + 1);
+            break;
+          }
+        }
+        mrrs.push(rr);
+
+        // AP
+        let ap = 0.0;
+        let hits = 0;
+        for (let i = 0; i < topk.length; i++) {
+          if (relIds.has(topk[i].id)) {
+            hits++;
+            ap += hits / (i + 1);
+          }
+        }
+        maps.push(relIds.size > 0 ? ap / relIds.size : 0.0);
+      });
+
+      // Restore weights
+      w_exp = savedExp;
+      w_pow = savedPow;
+      w_reinf = savedReinf;
+      w_lexical = savedLex;
+      w_semantic = savedSem;
+
+      return {
+        precision: precisions.reduce((a,b)=>a+b, 0) / precisions.length,
+        recall: recalls.reduce((a,b)=>a+b, 0) / recalls.length,
+        mrr: mrrs.reduce((a,b)=>a+b, 0) / mrrs.length,
+        map: maps.reduce((a,b)=>a+b, 0) / maps.length
+      };
+    }
+
+    function runBenchmark() {
+      const res = calculateMetrics(w_exp, w_pow, w_reinf, w_lexical, w_semantic);
+      
+      document.getElementById("metricMap").textContent = res.map.toFixed(4);
+      document.getElementById("metricMrr").textContent = res.mrr.toFixed(4);
+      document.getElementById("metricPrecision").textContent = res.precision.toFixed(4);
+      document.getElementById("metricRecall").textContent = res.recall.toFixed(4);
+    }
+
+    function runOptimization() {
+      const btn = document.getElementById("optimizeBtn");
+      const spinner = document.getElementById("optimizingSpinner");
+      const resultsEl = document.getElementById("optimizationResults");
+
+      spinner.classList.remove("hidden");
+      btn.disabled = true;
+
+      // Simulate async progress
+      setTimeout(() => {
+        let bestScore = -1.0;
+        let bestConfig = null;
+
+        // Grid search decay weights candidates
+        const decayCandidates = [];
+        for (let wE = 0.0; wE <= 1.0; wE += 0.2) {
+          for (let wP = 0.0; wP <= 1.0; wP += 0.2) {
+            for (let wR = 0.0; wR <= 1.0; wR += 0.2) {
+              if (Math.abs(wE + wP + wR - 1.0) < 1e-5) {
+                decayCandidates.push([wE, wP, wR]);
+              }
+            }
+          }
+        }
+
+        // Grid search retrieval weights candidates
+        const retrievalCandidates = [];
+        for (let wLex = 0.0; wLex <= 1.0; wLex += 0.2) {
+          retrievalCandidates.push([wLex, 1.0 - wLex]);
+        }
+
+        decayCandidates.forEach(([wE, wP, wR]) => {
+          retrievalCandidates.forEach(([wLex, wSem]) => {
+            const metrics = calculateMetrics(wE, wP, wR, wLex, wSem);
+            // Maximize MAP metric
+            if (metrics.map > bestScore) {
+              bestScore = metrics.map;
+              bestConfig = { wE, wP, wR, wLex, wSem, metrics };
+            }
+          });
+        });
+
+        // Apply best config
+        w_exp = bestConfig.wE;
+        w_pow = bestConfig.wP;
+        w_reinf = bestConfig.wR;
+        w_lexical = bestConfig.wLex;
+        w_semantic = bestConfig.wSem;
+
+        // Update Slider inputs
+        document.getElementById("expWeight").value = (w_exp * 100).toFixed(0);
+        document.getElementById("powWeight").value = (w_pow * 100).toFixed(0);
+        document.getElementById("reinfWeight").value = (w_reinf * 100).toFixed(0);
+        document.getElementById("lexicalWeight").value = (w_lexical * 100).toFixed(0);
+        document.getElementById("semanticWeight").value = (w_semantic * 100).toFixed(0);
+
+        // Update labels
+        document.getElementById("expWeightVal").textContent = `${(w_exp * 100).toFixed(0)}%`;
+        document.getElementById("powWeightVal").textContent = `${(w_pow * 100).toFixed(0)}%`;
+        document.getElementById("reinfWeightVal").textContent = `${(w_reinf * 100).toFixed(0)}%`;
+        document.getElementById("lexWeightLabel").textContent = `${(w_lexical * 100).toFixed(0)}%`;
+        document.getElementById("semWeightLabel").textContent = `${(w_semantic * 100).toFixed(0)}%`;
+
+        // Update indicators
+        runBenchmark();
+        updateUI();
+        updateChart();
+        runSearch();
+
+        // Show logs
+        resultsEl.classList.remove("hidden");
+        resultsEl.innerHTML = `
+          <strong>Optimal Configuration Found!</strong><br>
+          • Exponential Weight: ${(bestConfig.wE * 100).toFixed(0)}%<br>
+          • Power Law Weight: ${(bestConfig.wP * 100).toFixed(0)}%<br>
+          • Reinforcement Weight: ${(bestConfig.wR * 100).toFixed(0)}%<br>
+          • Lexical retrieval weight: ${(bestConfig.wLex * 100).toFixed(0)}%<br>
+          • Semantic retrieval weight: ${(bestConfig.wSem * 100).toFixed(0)}%<br>
+          • Best MAP Score: ${bestScore.toFixed(4)}
+        `;
+
+        spinner.classList.add("hidden");
+        btn.disabled = false;
+      }, 500);
+    }
+  </script>
+</body>
+</html>

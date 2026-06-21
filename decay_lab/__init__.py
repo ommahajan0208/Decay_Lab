@@ -1,0 +1,2 @@
+"""Decay-Lab package."""
+
