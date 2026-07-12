@@ -1,0 +1,23 @@
+2026-07-12 18:37:24,997  INFO      ============================================================
+2026-07-12 18:37:24,997  INFO      Decay Lab Benchmark  started  2026-07-12T13:07:24Z
+2026-07-12 18:37:24,997  INFO      Args: {'csv_path': None, 'n': 50000, 'max_rows': 0, 'seed': 42, 'calibration': False, 'no_plots': False}
+2026-07-12 18:37:25,096  INFO      Dataset: Synthetic (n=50,000, seed=42, HLR oracle formula) | n=50000 | recall=0.665 | mean_delta_days=9.14
+2026-07-12 18:37:25,223  INFO        HLR  smart    (hl=86400s  boost=4.0)            ll=0.4573  rmse=0.3830  auc=0.8618
+2026-07-12 18:37:25,346  INFO        HLR  adaptive (hl=3600s   boost=2.0)            ll=8.2171  rmse=0.7892  auc=0.7803
+2026-07-12 18:37:25,433  INFO        HLR  dumb     (hl=1800s   boost=1.5)            ll=11.4633  rmse=0.8098  auc=0.6527
+2026-07-12 18:37:25,520  INFO        PowerLaw  smart    (alpha=0.15)                 ll=0.5746  rmse=0.4397  auc=0.8523
+2026-07-12 18:37:25,609  INFO        PowerLaw  adaptive (alpha=0.35)                 ll=0.9291  rmse=0.5932  auc=0.8523
+2026-07-12 18:37:25,691  INFO        PowerLaw  dumb     (alpha=0.60)                 ll=1.5071  rmse=0.7105  auc=0.8523
+2026-07-12 18:37:25,757  INFO        Reinforcement  smart    (gamma=0.20)            ll=6.9518  rmse=0.5792  auc=0.4996
+2026-07-12 18:37:25,824  INFO        Reinforcement  adaptive (gamma=0.15)            ll=6.9518  rmse=0.5792  auc=0.4996
+2026-07-12 18:37:25,893  INFO        Reinforcement  dumb     (gamma=0.05)            ll=6.9518  rmse=0.5792  auc=0.4996
+2026-07-12 18:37:25,901  INFO        Baseline                                            ll=0.6380  rmse=0.4722  auc=0.5000
+2026-07-12 18:37:25,902  INFO      Saved JSON: C:\Users\OM MAHAJAN\Dev_Om\hackathon\Decay_Lab\results\benchmark_results.json
+2026-07-12 18:37:25,902  INFO      Saved CSV: C:\Users\OM MAHAJAN\Dev_Om\hackathon\Decay_Lab\results\tables\decay_metrics.csv
+2026-07-12 18:37:30,077  INFO      Saved figure: C:\Users\OM MAHAJAN\Dev_Om\hackathon\Decay_Lab\results\figures\forgetting_curves.png
+2026-07-12 18:37:30,077  INFO      Saved figure: C:\Users\OM MAHAJAN\Dev_Om\hackathon\Decay_Lab\results\figures\roc_curve.png
+2026-07-12 18:37:30,077  INFO      Saved figure: C:\Users\OM MAHAJAN\Dev_Om\hackathon\Decay_Lab\results\figures\calibration.png
+2026-07-12 18:37:30,077  INFO      Benchmark complete
+2026-07-12 18:54:19,862  INFO      ============================================================
+2026-07-12 18:54:19,862  INFO      Decay Lab Benchmark  started  2026-07-12T13:24:19Z
+2026-07-12 18:54:19,862  INFO      Args: {'csv_path': 'path/to/data.tsv.gz', 'n': 50000, 'max_rows': 0, 'seed': 42, 'calibration': False, 'no_plots': False}
