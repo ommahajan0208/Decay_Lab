@@ -399,8 +399,6 @@ So unrelated memories do not appear.
 
 ## Current Project Shape
 
-The project intentionally stays small:
-
 ```text
 Decay_Lab/
   decay_lab/
@@ -417,27 +415,116 @@ Decay_Lab/
     visualization.py
     data/
       memories.json
-      bandit_state.json  (persisted A matrices and b vectors per arm)
+      bandit_state.json
     docs/
       quickstart.md
     simulations/
-      __init__.py    (student simulation engine)
+      __init__.py
       student.py
     tests/
       test_decay.py
-    web/             (static files served by Flask)
+    web/
       index.html
       script.js
       style.css
+  benchmark_runner.py   (Phase 1 decay benchmark - see Benchmarks section)
+  datasets/             (place real HLR/FSRS CSV files here)
+  results/
+    benchmark_results.json
+    tables/
+      decay_metrics.csv
+    figures/
+      forgetting_curves.png
+      roc_curve.png
+      calibration.png
+    logs/
+      benchmark.log
   requirements.txt
   README.md
 ```
 
-The ensemble idea is still there, but without a large file tree.
+## Benchmarks
+
+Decay Lab includes a benchmark suite for evaluating the core decay models against
+spaced-repetition review data.
+
+### Phase 1 - Decay Model Benchmark
+
+**Dataset** - Calibrated synthetic SRS data generated from published HLR statistics
+(Settles & Meeder 2016, Ebbinghaus forgetting curve, FSRS Ye 2022). The synthetic
+oracle uses the exact HLR formula as ground truth so every metric is interpretable.
+To use the real Duolingo dataset instead, download it from Harvard Dataverse and
+pass `--csv-path`.
+
+**Models evaluated** - 9 variants across all three decay families:
+
+| Family | Variants |
+|---|---|
+| HLR | smart (hl=86400s, boost=4.0), adaptive (hl=3600s, boost=2.0), dumb (hl=1800s, boost=1.5) |
+| Power-Law | smart (alpha=0.15), adaptive (alpha=0.35), dumb (alpha=0.60) |
+| Reinforcement | smart (gamma=0.20), adaptive (gamma=0.15), dumb (gamma=0.05) |
+
+**Metrics** - Log-Loss, RMSE, ROC-AUC vs a naive mean-predict baseline.
+
+**Results (n=50,000 synthetic events, seed=42)**
+
+| Model | Log-Loss | RMSE | AUC |
+|---|---|---|---|
+| HLR smart (hl=86400s boost=4.0) | **0.4573** | **0.3830** | **0.8618** |
+| PowerLaw smart (alpha=0.15) | 0.5746 | 0.4397 | 0.8523 |
+| PowerLaw adaptive (alpha=0.35) | 0.9291 | 0.5932 | 0.8523 |
+| PowerLaw dumb (alpha=0.60) | 1.5071 | 0.7105 | 0.8523 |
+| Reinforcement (all variants) | 6.95 | 0.579 | ~0.50 |
+| Baseline (mean predict) | 0.6380 | 0.4722 | 0.5000 |
+
+Key findings:
+
+- HLR Smart beats the naive baseline on all three metrics (28% log-loss improvement, AUC 0.86).
+- Power-Law Smart also beats the baseline. Its AUC is almost identical to HLR's, which means the
+  shape is correct - only the scale differs.
+- Reinforcement models output a constant prediction near 1.0 because the formula has no elapsed-time
+  term. They are designed as ensemble boosters, not standalone predictors. The benchmark
+  confirms they should never be selected alone by the bandit.
+- HLR Adaptive/Dumb half-lives (1h/30min) are too short for the ~9 day mean review interval,
+  producing near-zero predictions.
+
+**Run**
+
+```powershell
+# Install matplotlib for figure generation (optional)
+pip install matplotlib
+
+# Default: 50 000 synthetic events
+python benchmark_runner.py
+
+# Larger run with calibration tables
+python benchmark_runner.py --n 200000 --calibration
+
+# Real Duolingo/HLR dataset (download from Harvard Dataverse first)
+python benchmark_runner.py --csv-path datasets/settles.acl16.data.tsv.gz
+
+# Skip figures
+python benchmark_runner.py --no-plots
+```
+
+**Outputs**
+
+```text
+results/
+  benchmark_results.json        full metrics report
+  tables/
+    decay_metrics.csv           paper-format table sorted by log-loss
+  figures/
+    forgetting_curves.png       9 model decay curves over 0-30 days
+    roc_curve.png               ROC curves with AUC in legend
+    calibration.png             reliability diagram (predicted vs actual)
+  logs/
+    benchmark.log               timestamped run log
+```
+
+---
 
 ## Good Next Steps
-
-Useful future improvements:
 
 - Train LinUCB theta vectors from real user interaction logs rather than starting from identity matrices.
 - Add a contextual mixture-of-experts mode that keeps the blending behavior but makes weights context-dependent (`w(x) = softmax(W @ x + b)`).
@@ -446,4 +533,6 @@ Useful future improvements:
 - Add better tokenization so punctuation does not reduce lexical match scores.
 - Implement a per-query interference suppression mechanism that penalizes all memories similar to the top result, not just on insert.
 - Add CLI commands to inspect or reset `recall_count` and to dump per-arm theta vectors.
+- Phase 2 benchmark: retrieval evaluation against MS MARCO Dev-Small (P@1, MRR@10, NDCG@10).
+- Phase 3 benchmark: bandit regret comparison of LinUCB vs Greedy vs Epsilon-Greedy.
 
