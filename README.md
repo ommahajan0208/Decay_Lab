@@ -65,10 +65,11 @@ This matters because if relevance is zero, the final score is zero. Strong but u
   - *Smart Brain:* High retention, massive reinforcement boosts, high storage cost.
   - *Dumb Brain:* Fast decay with an active Garbage Collector that permanently deletes weak memories from the database to ensure storage efficiency.
 
-### v3: Reinforcement Learning & Contextual Bandits
-- **Adaptive Brain Profile:** Added an `ADAPTIVE_BRAIN` profile that replaces static ensemble weights with dynamic weights.
-- **Contextual Bandit:** Integrated a Thompson Sampling inspired Softmax bandit (`decay_lab/bandit.py`) to continuously learn and tune the exact decay blend (HLR vs Power vs Reinforcement).
-- **User Feedback Loop:** Users can click like (thumbs up) or dislike (thumbs down) on retrieved memories in the UI. This reward signal is fed into the backend bandit, which updates its weight distribution in real-time.
+### v3: Reinforcement Learning and Contextual Bandits
+- **Adaptive Brain Profile:** Added an `ADAPTIVE_BRAIN` profile. Instead of using a fixed-weight ensemble, it selects exactly one decay model per query using a bandit.
+- **LinUCB Contextual Bandit:** Implemented a LinUCB-Disjoint bandit (`decay_lab/bandit.py`). For each query the bandit receives a 5-feature context vector (days since last access, log recall count, raw strength, memory age, log query length), computes an Upper Confidence Bound score per arm, and selects the arm with the highest UCB score. Only the selected arm scores the memory; the other two arms are untouched.
+- **True Bandit Update:** On thumbs-up or thumbs-down feedback, the reward is applied exclusively to the arm that was chosen for that query (`A[chosen] += x @ x^T`, `b[chosen] += reward * x`). Arm matrices persist to disk between sessions.
+- **User Feedback Loop:** Thumbs-up or thumbs-down on retrieved memories in the UI sends a +1 or -1 reward to `/api/feedback`, which forwards it to the bandit's `update()` method.
 
 ### v4: Realistic Spaced Repetition Simulation: "The Student"
 - **New Simulations Tab:** The web dashboard now has a dedicated Simulations tab.
@@ -246,7 +247,7 @@ This is the research core of the project.
 Wraps the decay model system behind one stable API:
 
 ```python
-effective_strength(memory, now=None)
+effective_strength(memory, now=None, query="")
 ```
 
 The engine selects weights and decay parameters based on the active `BrainProfile`. Three built-in profiles are defined:
@@ -254,10 +255,12 @@ The engine selects weights and decay parameters based on the active `BrainProfil
 ```text
 SMART_BRAIN:    40% HLRDecay / 40% PowerLawDecay / 20% ReinforcementDecay
 DUMB_BRAIN:     70% HLRDecay / 20% PowerLawDecay / 10% ReinforcementDecay
-ADAPTIVE_BRAIN: weights are dynamically tuned by the ContextualBandit
+ADAPTIVE_BRAIN: LinUCB bandit selects one arm per query; no blending
 ```
 
-Other code does not need to know the details of the ensemble. It just asks the engine for effective strength.
+In adaptive mode, the engine passes the query string and memory state to `build_context()` to produce a 5-feature vector, calls `bandit.select(context)` to pick one arm (HLR, Power-Law, or Reinforcement), and returns only that arm's score. The other two arms are not evaluated.
+
+Other code does not need to know which arm was chosen. It just calls `effective_strength` and receives a float.
 
 ### decay_lab/retrieval.py
 
@@ -305,6 +308,17 @@ It supports:
 - `Evaluator.evaluate(examples, k)`: runs all examples through the retriever and returns `EvalMetrics` containing Precision@K, Recall@K, MRR@K, and MAP@K.
 - `Evaluator.optimize_weights(examples, k, metric)`: grid-searches over `semantic_alpha` values to find the retriever configuration that maximizes a chosen metric.
 
+### decay_lab/bandit.py
+
+Implements the `LinUCBBandit` class and context vector helpers.
+
+Key components:
+
+- `LinUCBBandit` - LinUCB-Disjoint algorithm. Maintains one `A` matrix and `b` vector per arm. All matrix operations are pure Python (Gauss-Jordan inversion, no numpy).
+- `build_context(memory_strength, last_accessed_at, recall_count, created_at, query, now)` - converts raw memory state and query into a normalized 5-element float vector.
+- `FEATURE_NAMES` and `ARM_NAMES` - exported constants used by the dashboard.
+- `persist_path` - optional path to a JSON file for saving and loading arm matrices between server restarts.
+
 ### decay_lab/tests/test_decay.py
 
 Unit tests for the core behavior.
@@ -324,6 +338,14 @@ It currently checks:
 - Retrieval returns all matching memories up to the limit.
 - `Evaluator.evaluate` computes correct Precision@K, Recall@K, MRR@K, and MAP@K.
 - `Evaluator.optimize_weights` returns a valid `semantic_alpha` configuration.
+- `LinUCBBandit.select` returns a valid arm index (0, 1, or 2).
+- `select` stores `last_arm` and `last_context` for the feedback call.
+- `update` modifies only the chosen arm's `A` and `b` matrices.
+- `update` appends a correct entry to `history`.
+- `update` without a prior `select` is a no-op.
+- UCB scores are strictly higher with a larger `alpha` (exploration bonus confirmed).
+- `build_context` returns a 5-element vector with all values in `[0, 1]`.
+- `get_theta` returns a vector of length `N_FEATURES`.
 
 Run tests from the workspace root:
 
@@ -383,7 +405,7 @@ The project intentionally stays small:
 Decay_Lab/
   decay_lab/
     app.py
-    bandit.py
+    bandit.py          (LinUCBBandit, build_context, Gauss-Jordan inverse)
     dashboard.html
     decay_engine.py
     decay_models.py
@@ -395,6 +417,7 @@ Decay_Lab/
     visualization.py
     data/
       memories.json
+      bandit_state.json  (persisted A matrices and b vectors per arm)
     docs/
       quickstart.md
     simulations/
@@ -403,6 +426,9 @@ Decay_Lab/
     tests/
       test_decay.py
     web/             (static files served by Flask)
+      index.html
+      script.js
+      style.css
   requirements.txt
   README.md
 ```
@@ -413,10 +439,11 @@ The ensemble idea is still there, but without a large file tree.
 
 Useful future improvements:
 
-- Add interference decay for similar competing memories.
-- Add memory types, such as `preference`, `temporary`, `project`, or `habit`.
-- Give each memory type different ensemble weights.
-- Add better tokenization so punctuation does not reduce matches.
-- Add a small evaluator dataset to compare scoring formulas.
-- Add CLI commands to inspect or reset `recall_count`.
+- Train LinUCB theta vectors from real user interaction logs rather than starting from identity matrices.
+- Add a contextual mixture-of-experts mode that keeps the blending behavior but makes weights context-dependent (`w(x) = softmax(W @ x + b)`).
+- Replace JSON flat-file storage with a vector database (FAISS or Chroma) to support semantic ANN search at scale.
+- Add memory types such as `preference`, `temporary`, `project`, or `habit`, with per-type decay profile overrides.
+- Add better tokenization so punctuation does not reduce lexical match scores.
+- Implement a per-query interference suppression mechanism that penalizes all memories similar to the top result, not just on insert.
+- Add CLI commands to inspect or reset `recall_count` and to dump per-arm theta vectors.
 
