@@ -330,17 +330,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 await refreshGraveyard();
             }
 
-            // Feedback buttons → RL Bandit
+            // Feedback buttons - LinUCB bandit
             document.querySelectorAll('.feedback-btn').forEach(btn => {
                 btn.addEventListener('click', async e => {
                     const reward = parseFloat(e.target.getAttribute('data-reward'));
                     const fb = await api('/api/feedback', 'POST', { reward });
-                    const w = fb.current_weights;
                     e.target.parentElement.innerHTML = '<span style="font-size:0.76rem;color:#aaa">✓ Recorded</span>';
-                    addEvent(`${reward > 0 ? '👍' : '👎'} Feedback → Bandit updated: HLR ${(w[0]*100).toFixed(0)}% | Power ${(w[1]*100).toFixed(0)}% | Reinf ${(w[2]*100).toFixed(0)}%`, reward > 0 ? 'study' : 'death');
-                    // Track for bandit chart
-                    banditWeightHistory.push({ hlr: w[0], power: w[1], reinf: w[2] });
-                    if (banditWeightHistory.length > 20) banditWeightHistory.shift();
+                    const armName = fb.arm_updated || 'unknown';
+                    addEvent(`${reward > 0 ? '👍' : '👎'} Feedback → reward ${reward > 0 ? '+1' : '-1'} applied to arm: ${armName}`, reward > 0 ? 'study' : 'death');
                     await refreshBandit();
                 });
             });
@@ -422,91 +419,134 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── RL Bandit Dashboard ───────────────────────────────────
+    // ── LinUCB Bandit Dashboard ───────────────────────────────
+    const ARM_COLORS = ['#3b82f6', '#10b981', '#f59e0b'];
+    let banditUCBHistory = []; // [{hlr, power, reinf}] for the UCB chart
+
     async function refreshBandit() {
         const data = await api('/api/bandit');
-        const names = data.model_names;
-        const barColors = ['#3b82f6', '#10b981', '#f59e0b'];
+        const names = data.arm_names || ['HLR', 'Power-Law', 'Reinforcement'];
+        const featureNames = data.feature_names || [];
 
-        // Scores
-        const scoresEl = document.getElementById('bandit-scores');
-        scoresEl.innerHTML = '';
-        data.scores.forEach((s, i) => {
-            const maxScore = Math.max(...data.scores, 0.01);
-            const pct = Math.max(2, (s / maxScore) * 100);
-            scoresEl.innerHTML += `
-                <div class="bandit-bar-row">
-                    <span class="bandit-bar-label">${names[i]}</span>
-                    <div class="bandit-bar-bg">
-                        <div class="bandit-bar-fill" style="width:${pct}%;background:${barColors[i]}"></div>
-                    </div>
-                    <span class="bandit-bar-val">${s.toFixed(3)}</span>
-                </div>`;
-        });
+        // -- Arm cards with active highlight --
+        for (let i = 0; i < 3; i++) {
+            const card = document.getElementById(`arm-card-${i}`);
+            const ucbEl = document.getElementById(`arm-ucb-${i}`);
+            if (!card) continue;
 
-        // Weights
-        const weightsEl = document.getElementById('bandit-weights');
-        weightsEl.innerHTML = '';
-        data.weights.forEach((w, i) => {
-            const pct = Math.max(2, w * 100);
-            weightsEl.innerHTML += `
-                <div class="bandit-bar-row">
-                    <span class="bandit-bar-label">${names[i]}</span>
-                    <div class="bandit-bar-bg">
-                        <div class="bandit-bar-fill" style="width:${pct.toFixed(1)}%;background:${barColors[i]}"></div>
-                    </div>
-                    <span class="bandit-bar-val">${(w*100).toFixed(1)}%</span>
-                </div>`;
-        });
+            const isActive = data.last_arm_selected === i;
+            card.classList.toggle('arm-selected', isActive);
+            card.style.borderColor = isActive ? ARM_COLORS[i] : 'rgba(255,255,255,0.08)';
+            card.style.boxShadow = isActive ? `0 0 18px ${ARM_COLORS[i]}55` : 'none';
 
-        // History
-        const histEl = document.getElementById('bandit-history');
-        histEl.innerHTML = '';
-        if (!data.history.length) {
-            histEl.innerHTML = '<div class="empty-state">No feedback yet. Search memories and click 👍 or 👎.</div>';
-        } else {
-            [...data.history].reverse().forEach((h, idx) => {
-                const el = document.createElement('div');
-                el.className = `bandit-entry ${h.reward > 0 ? 'positive' : 'negative'}`;
-                const deltas = h.delta.map((d, i) => `${names[i]}: ${d > 0 ? '+' : ''}${(d*100).toFixed(1)}%`).join(' | ');
-                el.innerHTML = `
-                    <strong>Round ${data.history.length - idx}:</strong> ${h.reward > 0 ? '👍' : '👎'}
-                    → <span style="font-size:0.75rem;color:#7c8fa6">${deltas}</span>
-                `;
-                histEl.appendChild(el);
+            const ucbScore = data.ucb_scores?.[i];
+            ucbEl.textContent = ucbScore !== undefined ? `UCB: ${ucbScore.toFixed(3)}` : 'UCB: —';
+            ucbEl.style.color = isActive ? ARM_COLORS[i] : '#7c8fa6';
+        }
+
+        // -- Context vector feature table --
+        const ctxEl = document.getElementById('bandit-context');
+        if (ctxEl && data.last_context && data.last_context.some(v => v !== 0)) {
+            ctxEl.innerHTML = '';
+            data.last_context.forEach((val, i) => {
+                const fname = featureNames[i] || `Feature ${i}`;
+                const pct = Math.min(100, Math.round(val * 100));
+                ctxEl.innerHTML += `
+                    <div class="ctx-feature">
+                        <div class="ctx-feature-name">${fname}</div>
+                        <div class="ctx-bar-bg">
+                            <div class="ctx-bar-fill" style="width:${pct}%;background:${ARM_COLORS[i % 3]}"></div>
+                        </div>
+                        <span class="ctx-feature-val">${val.toFixed(4)}</span>
+                    </div>`;
             });
         }
 
-        // Weight evolution chart
-        if (banditWeightHistory.length > 1) {
+        // -- Theta vectors table (per arm) --
+        const thetaEl = document.getElementById('bandit-theta');
+        if (thetaEl && data.theta) {
+            let html = '<table class="theta-table"><thead><tr><th>Feature</th>';
+            names.forEach((n, i) => {
+                html += `<th style="color:${ARM_COLORS[i]}">${n}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+            featureNames.forEach((fname, fi) => {
+                html += `<tr><td class="theta-fname">${fname}</td>`;
+                names.forEach((_, ai) => {
+                    const val = data.theta[ai]?.[fi] ?? 0;
+                    const valStr = val.toFixed(4);
+                    const color = val > 0 ? '#10b981' : val < 0 ? '#ef4444' : '#7c8fa6';
+                    html += `<td style="color:${color};font-family:monospace">${valStr}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            thetaEl.innerHTML = html;
+        }
+
+        // -- Feedback History --
+        const histEl = document.getElementById('bandit-history');
+        if (histEl) {
+            histEl.innerHTML = '';
+            if (!data.history || !data.history.length) {
+                histEl.innerHTML = '<div class="empty-state">No feedback yet. Switch to Adaptive mode, search memories, then click thumbs-up or thumbs-down.</div>';
+            } else {
+                [...data.history].reverse().forEach((h, idx) => {
+                    const el = document.createElement('div');
+                    el.className = `bandit-entry ${h.reward > 0 ? 'positive' : 'negative'}`;
+                    const ctx = h.context?.map(v => v.toFixed(3)).join(', ') || '—';
+                    el.innerHTML = `
+                        <strong>Round ${data.history.length - idx}:</strong> ${h.reward > 0 ? '👍' : '👎'}
+                        → arm: <span style="color:${ARM_COLORS[names.indexOf(h.arm)]||'#7c8fa6'}">${h.arm}</span>
+                        <span style="font-size:0.73rem;color:#7c8fa6;display:block;margin-top:2px">ctx: [${ctx}]</span>
+                    `;
+                    histEl.appendChild(el);
+                });
+            }
+        }
+
+        // -- UCB score evolution chart --
+        if (data.ucb_scores) {
+            banditUCBHistory.push({
+                hlr:   data.ucb_scores[0],
+                power: data.ucb_scores[1],
+                reinf: data.ucb_scores[2],
+            });
+            if (banditUCBHistory.length > 20) banditUCBHistory.shift();
+        }
+        if (banditUCBHistory.length > 1) {
             const bCtx = document.getElementById('banditChart').getContext('2d');
-            const labels = banditWeightHistory.map((_, i) => `R${i+1}`);
+            const labels = banditUCBHistory.map((_, i) => `Q${i+1}`);
             const bDatasets = [
-                { label: 'HLR',          data: banditWeightHistory.map(h => h.hlr),   borderColor: '#3b82f6', backgroundColor: '#3b82f620', borderWidth: 2, pointRadius: 3, fill: false },
-                { label: 'Power-Law',    data: banditWeightHistory.map(h => h.power), borderColor: '#10b981', backgroundColor: '#10b98120', borderWidth: 2, pointRadius: 3, fill: false },
-                { label: 'Reinforcement', data: banditWeightHistory.map(h => h.reinf), borderColor: '#f59e0b', backgroundColor: '#f59e0b20', borderWidth: 2, pointRadius: 3, fill: false },
+                { label: 'HLR UCB',           data: banditUCBHistory.map(h => h.hlr),   borderColor: ARM_COLORS[0], backgroundColor: ARM_COLORS[0]+'20', borderWidth: 2, pointRadius: 3, fill: false },
+                { label: 'Power-Law UCB',      data: banditUCBHistory.map(h => h.power), borderColor: ARM_COLORS[1], backgroundColor: ARM_COLORS[1]+'20', borderWidth: 2, pointRadius: 3, fill: false },
+                { label: 'Reinforcement UCB',  data: banditUCBHistory.map(h => h.reinf), borderColor: ARM_COLORS[2], backgroundColor: ARM_COLORS[2]+'20', borderWidth: 2, pointRadius: 3, fill: false },
             ];
             if (banditChart) banditChart.destroy();
             banditChart = new Chart(bCtx, {
                 type: 'line',
                 data: { labels, datasets: bDatasets },
-                options: makeChartOpts('Weight (%)', 1.05),
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: { duration: 400 },
+                    plugins: { legend: { labels: { color: '#94a3b8', usePointStyle: true, font: { size: 11 } } } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#7c8fa6' } },
+                        y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#7c8fa6', font: { size: 11 } },
+                            title: { display: true, text: 'UCB Score', color: '#7c8fa6' } }
+                    }
+                },
             });
         }
     }
 
-    // ── Bandit Temperature/LR Sliders ────────────────────────
-    document.getElementById('temp-slider').addEventListener('input', async e => {
+    // ── Alpha Slider (LinUCB exploration parameter) ───────────
+    document.getElementById('alpha-slider').addEventListener('input', async e => {
         const val = parseFloat(e.target.value);
-        document.getElementById('temp-value').textContent = val.toFixed(1);
-        await api('/api/bandit/tune', 'POST', { temperature: val });
-        addEvent(`🌡️ Bandit temperature → ${val.toFixed(1)} (${val > 2 ? '🔥 High exploration' : '❄️ Exploitation mode'})`, 'info');
+        document.getElementById('alpha-value').textContent = val.toFixed(2);
+        await api('/api/bandit/tune', 'POST', { alpha: val });
+        addEvent(`LinUCB alpha → ${val.toFixed(2)} (${val > 2 ? 'high exploration' : 'exploitation mode'})`, 'info');
         await refreshBandit();
-    });
-    document.getElementById('lr-slider').addEventListener('input', async e => {
-        const val = parseFloat(e.target.value);
-        document.getElementById('lr-value').textContent = val.toFixed(2);
-        await api('/api/bandit/tune', 'POST', { learning_rate: val });
     });
 
     // ── Student Simulation ────────────────────────────────────

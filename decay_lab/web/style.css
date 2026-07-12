@@ -703,3 +703,105 @@ body {
     .header-top, .time-strip { flex-direction: column; align-items: stretch; }
     .sim-clock { justify-content: center; margin-bottom: 0.5rem; }
 }
+
+/* ── LinUCB Bandit Panel ──────────────────────────────────── */
+.bandit-arm-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+.bandit-arm-card {
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    text-align: center;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+.bandit-arm-card.arm-selected {
+    background: rgba(255, 255, 255, 0.06);
+}
+.arm-card-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+}
+.arm-card-sub {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+}
+.arm-card-ucb {
+    font-size: 0.78rem;
+    font-family: 'Space Grotesk', monospace;
+    margin-top: 0.5rem;
+    transition: color 0.3s;
+}
+
+/* Context vector feature bars */
+.bandit-context-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+.ctx-feature {
+    display: grid;
+    grid-template-columns: 1fr 2fr auto;
+    align-items: center;
+    gap: 0.5rem;
+}
+.ctx-feature-name {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ctx-bar-bg {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.07);
+    overflow: hidden;
+}
+.ctx-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+.ctx-feature-val {
+    font-size: 0.7rem;
+    font-family: 'Space Grotesk', monospace;
+    color: var(--text-muted);
+    min-width: 4rem;
+    text-align: right;
+}
+
+/* Theta table */
+.theta-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+    margin-top: 0.5rem;
+}
+.theta-table thead th {
+    padding: 0.4rem 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+}
+.theta-table tbody td {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.theta-fname {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

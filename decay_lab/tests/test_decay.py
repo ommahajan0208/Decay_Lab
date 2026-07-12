@@ -210,5 +210,101 @@ class TestEvaluatorExpanded(unittest.TestCase):
         self.assertGreater(best_score, 0.0)
 
 
+from decay_lab.bandit import LinUCBBandit, build_context, N_ARMS, N_FEATURES
+
+
+class TestLinUCBBandit(unittest.TestCase):
+    def _make_bandit(self, alpha: float = 1.0) -> LinUCBBandit:
+        return LinUCBBandit(alpha=alpha, persist_path=None)
+
+    def _uniform_context(self) -> list:
+        return [0.5] * N_FEATURES
+
+    def test_select_returns_valid_arm_index(self):
+        bandit = self._make_bandit()
+        ctx = self._uniform_context()
+        arm = bandit.select(ctx)
+        self.assertIn(arm, range(N_ARMS))
+
+    def test_select_stores_last_arm_and_context(self):
+        bandit = self._make_bandit()
+        ctx = self._uniform_context()
+        arm = bandit.select(ctx)
+        self.assertEqual(bandit.last_arm, arm)
+        self.assertEqual(bandit.last_context, ctx)
+
+    def test_update_only_modifies_chosen_arm(self):
+        bandit = self._make_bandit()
+        ctx = self._uniform_context()
+
+        # Snapshot A matrices before update
+        import copy
+        A_before = copy.deepcopy(bandit.A)
+        b_before = copy.deepcopy(bandit.b)
+
+        chosen = bandit.select(ctx)
+        bandit.update(reward=1.0)
+
+        for arm in range(N_ARMS):
+            if arm == chosen:
+                # Chosen arm's matrices must have changed
+                self.assertNotEqual(bandit.A[arm], A_before[arm], f"Arm {arm} A should change")
+                self.assertNotEqual(bandit.b[arm], b_before[arm], f"Arm {arm} b should change")
+            else:
+                # Unchosen arms must be identical
+                self.assertEqual(bandit.A[arm], A_before[arm], f"Arm {arm} A should not change")
+                self.assertEqual(bandit.b[arm], b_before[arm], f"Arm {arm} b should not change")
+
+    def test_update_appends_to_history(self):
+        bandit = self._make_bandit()
+        bandit.select(self._uniform_context())
+        bandit.update(reward=1.0)
+        self.assertEqual(len(bandit.history), 1)
+        self.assertIn("arm", bandit.history[0])
+        self.assertIn("reward", bandit.history[0])
+        self.assertIn("context", bandit.history[0])
+
+    def test_update_without_select_does_nothing(self):
+        bandit = self._make_bandit()
+        # No select() has been called - update should be a no-op
+        bandit.update(reward=1.0)
+        self.assertEqual(len(bandit.history), 0)
+
+    def test_ucb_exploration_bonus_present_with_high_alpha(self):
+        """With high alpha and a fresh bandit, UCB bonus should dominate."""
+        bandit_low  = self._make_bandit(alpha=0.01)
+        bandit_high = self._make_bandit(alpha=10.0)
+        ctx = self._uniform_context()
+
+        scores_low  = bandit_low.get_ucb_scores(ctx)
+        scores_high = bandit_high.get_ucb_scores(ctx)
+
+        # High alpha should produce strictly higher (or equal) UCB scores
+        for lo, hi in zip(scores_low, scores_high):
+            self.assertLessEqual(lo, hi)
+
+    def test_build_context_returns_normalized_floats(self):
+        import time
+        now = time.time()
+        ctx = build_context(
+            memory_strength=0.9,
+            last_accessed_at=now - 3600 * 48,  # 2 days ago
+            recall_count=5,
+            created_at=now - 3600 * 24 * 7,   # 7 days old
+            query="what is machine learning",
+            now=now,
+        )
+        self.assertEqual(len(ctx), N_FEATURES)
+        for val in ctx:
+            self.assertGreaterEqual(val, 0.0, "Context values must be >= 0")
+            self.assertLessEqual(val, 1.0, "Context values must be <= 1 (normalized)")
+
+    def test_get_theta_returns_correct_length(self):
+        bandit = self._make_bandit()
+        for arm in range(N_ARMS):
+            theta = bandit.get_theta(arm)
+            self.assertEqual(len(theta), N_FEATURES)
+
+
 if __name__ == "__main__":
     unittest.main()

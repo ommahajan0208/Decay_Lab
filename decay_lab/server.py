@@ -10,6 +10,7 @@ from decay_lab.decay_engine import DecayEngine, SMART_BRAIN, DUMB_BRAIN, ADAPTIV
 from decay_lab.retrieval import Retriever
 from decay_lab.visualization import compute_strength_series
 from decay_lab.simulations import run_both, EXAM_TOPICS, STUDY_SCHEDULE
+from decay_lab.bandit import ARM_NAMES, FEATURE_NAMES
 
 app = Flask(__name__, static_folder="web")
 
@@ -22,10 +23,6 @@ retriever = Retriever(store=store, decay_engine=decay_engine)
 # ── Global Simulation State ────────────────────────────────────
 global_time_offset: float = 0.0          # extra seconds added to now()
 graveyard: List[Dict] = []               # all pruned memories with cause-of-death
-bandit_history: List[Dict] = []          # RL feedback history for dashboard
-
-# Models list for bandit dashboard labels
-DECAY_MODEL_NAMES = ["HLR", "Power-Law", "Reinforcement"]
 
 
 def sim_now() -> float:
@@ -132,51 +129,63 @@ def set_profile():
     return jsonify({"status": "success", "profile": profile_name, "pruned": pruned_count})
 
 
-# ── RL Feedback API ────────────────────────────────────────────
+# ── LinUCB Feedback API ────────────────────────────────────────
 @app.route("/api/feedback", methods=["POST"])
 def feedback():
+    """
+    Accept a reward signal (+1 helpful, -1 not helpful) and apply it to the
+    arm that was last selected by the LinUCB bandit.
+    The bandit stores last_context and last_arm internally from the most recent
+    effective_strength() call in adaptive mode.
+    """
     data = request.json
     reward = float(data.get("reward", 0.0))
-    old_weights = decay_engine.bandit.get_weights()[:]
-    decay_engine.bandit.update(reward)
-    new_weights = decay_engine.bandit.get_weights()
+    b = decay_engine.bandit
 
-    entry = {
-        "reward": reward,
-        "old_weights": [round(w, 3) for w in old_weights],
-        "new_weights": [round(w, 3) for w in new_weights],
-        "delta": [round(new_weights[i] - old_weights[i], 3) for i in range(3)],
-    }
-    bandit_history.append(entry)
+    arm_before = b.last_arm
+    arm_name_before = b.last_arm_name
+    b.update(reward)
 
     return jsonify({
         "status": "success",
-        "current_weights": new_weights,
-        "entry": entry,
+        "arm_updated": arm_name_before,
+        "arm_index": arm_before,
+        "reward": reward,
     })
 
 @app.route("/api/bandit")
 def bandit_state():
+    """Return the full LinUCB bandit state for the dashboard."""
     b = decay_engine.bandit
-    weights = b.get_weights()
+
+    # Compute theta vectors per arm
+    thetas = []
+    for a in range(3):
+        theta = b.get_theta(a)
+        thetas.append([round(v, 4) for v in theta])
+
+    # UCB scores for last context (or zeros if no query yet)
+    last_ctx = b.last_context or [0.0] * 5
+    ucb_scores = b.get_ucb_scores(last_ctx)
+
     return jsonify({
-        "scores": [round(s, 4) for s in b.scores],
-        "weights": [round(w, 4) for w in weights],
-        "temperature": b.temperature,
-        "learning_rate": b.learning_rate,
-        "model_names": DECAY_MODEL_NAMES,
-        "history": bandit_history[-10:],  # last 10 feedback events
+        "arm_names": ARM_NAMES,
+        "feature_names": FEATURE_NAMES,
+        "alpha": b.alpha,
+        "last_arm_selected": b.last_arm,
+        "last_arm_name": b.last_arm_name,
+        "last_context": [round(v, 4) for v in last_ctx],
+        "ucb_scores": ucb_scores,
+        "theta": thetas,
+        "history": b.history[-10:],
     })
 
 @app.route("/api/bandit/tune", methods=["POST"])
 def tune_bandit():
     data = request.json or {}
-    if "temperature" in data:
-        decay_engine.bandit.temperature = max(0.1, float(data["temperature"]))
-    if "learning_rate" in data:
-        decay_engine.bandit.learning_rate = max(0.01, float(data["learning_rate"]))
-    return jsonify({"status": "ok", "temperature": decay_engine.bandit.temperature,
-                    "learning_rate": decay_engine.bandit.learning_rate})
+    if "alpha" in data:
+        decay_engine.bandit.alpha = max(0.01, float(data["alpha"]))
+    return jsonify({"status": "ok", "alpha": decay_engine.bandit.alpha})
 
 
 # ── Memories API ───────────────────────────────────────────────
@@ -250,7 +259,9 @@ def search():
         return jsonify({"results": []})
 
     now = sim_now()
-    results, _ = retriever.retrieve_and_touch(query, limit=5, min_relevance=0.01, now=now)
+    # Pass the query string so the LinUCB bandit can include query complexity
+    # as a context feature when the adaptive profile is active.
+    results, _ = retriever.retrieve_and_touch(query, limit=5, min_relevance=0.01, now=now, query_for_bandit=query)
 
     pruned_count, pruned_list = store.garbage_collect(decay_engine, now=now)
     graveyard.extend(pruned_list)

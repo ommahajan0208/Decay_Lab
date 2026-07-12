@@ -66,6 +66,7 @@ class Retriever:
         limit: int = 5,
         now: Optional[float] = None,
         min_relevance: float = 0.0,
+        query_for_bandit: str = "",
     ) -> List[RetrievalResult]:
         memories = self.store.list_all()
         if not memories:
@@ -83,7 +84,7 @@ class Retriever:
 
         candidates: List[RetrievalResult] = []
         for m in memories:
-            strength = self.decay_engine.effective_strength(m, now=now)
+            strength = self.decay_engine.effective_strength(m, now=now, query=query_for_bandit)
             lexical_rel = self._lexical_relevance(query, m)
             
             if self.use_semantic and self._bi_encoder is not None:
@@ -125,10 +126,17 @@ class Retriever:
         now: Optional[float] = None,
         min_relevance: float = 0.0,
         prune_keep_ids: Optional[List[str]] = None,
+        query_for_bandit: str = "",
     ) -> Tuple[List[RetrievalResult], int]:
         import time
 
-        results = self.rank(query, limit=limit, now=now, min_relevance=min_relevance)
+        results = self.rank(
+            query,
+            limit=limit,
+            now=now,
+            min_relevance=min_relevance,
+            query_for_bandit=query_for_bandit,
+        )
         t = now if now is not None else time.time()
 
         for r in results:

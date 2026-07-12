@@ -158,51 +158,74 @@
         </section>
     </div>
 
-    <!-- ─── TAB: RL BANDIT DASHBOARD ─── -->
+    <!-- ─── TAB: LinUCB BANDIT DASHBOARD ─── -->
     <div id="tab-bandit" class="tab-panel hidden">
         <div class="bandit-grid">
             <section class="glass-panel">
-                <h2>🎰 RL Contextual Bandit — Live State</h2>
-                <p class="sim-subtitle">Watch the AI learn which decay model works best in real-time based on your feedback.</p>
+                <h2>LinUCB Contextual Bandit — Live State</h2>
+                <p class="sim-subtitle">After each search in Adaptive mode, the bandit selects exactly one decay model arm based on a 5-feature context vector. Feedback rewards only that arm.</p>
 
+                <!-- Last arm selected -->
                 <div class="bandit-section">
-                    <h3>Internal Scores (learned from feedback)</h3>
-                    <div id="bandit-scores"></div>
-                </div>
-
-                <div class="bandit-section">
-                    <h3>Output Weights (Softmax distribution)</h3>
-                    <div id="bandit-weights"></div>
-                </div>
-
-                <div class="bandit-section">
-                    <h3>🌡️ Bandit Temperature</h3>
-                    <p class="bandit-hint">Higher = more random exploration. Lower = exploits current best model.</p>
-                    <div class="slider-row">
-                        <span>❄️ Exploit</span>
-                        <input type="range" id="temp-slider" min="0.1" max="5.0" step="0.1" value="1.0">
-                        <span>🔥 Explore</span>
-                        <span id="temp-value" class="slider-val">1.0</span>
+                    <h3>Last Arm Selected</h3>
+                    <div id="bandit-arm-cards" class="bandit-arm-cards">
+                        <div class="bandit-arm-card" id="arm-card-0">
+                            <div class="arm-card-name">HLR</div>
+                            <div class="arm-card-sub">Half-Life Regression</div>
+                            <div class="arm-card-ucb" id="arm-ucb-0">UCB: —</div>
+                        </div>
+                        <div class="bandit-arm-card" id="arm-card-1">
+                            <div class="arm-card-name">Power-Law</div>
+                            <div class="arm-card-sub">Long-tail decay</div>
+                            <div class="arm-card-ucb" id="arm-ucb-1">UCB: —</div>
+                        </div>
+                        <div class="bandit-arm-card" id="arm-card-2">
+                            <div class="arm-card-name">Reinforcement</div>
+                            <div class="arm-card-sub">Recall boost</div>
+                            <div class="arm-card-ucb" id="arm-ucb-2">UCB: —</div>
+                        </div>
                     </div>
-                    <div class="slider-row" style="margin-top:0.75rem">
-                        <span>LR:</span>
-                        <input type="range" id="lr-slider" min="0.01" max="2.0" step="0.01" value="0.5">
-                        <span id="lr-value" class="slider-val">0.50</span>
+                </div>
+
+                <!-- Context vector from last decision -->
+                <div class="bandit-section">
+                    <h3>Context Vector (last decision)</h3>
+                    <div id="bandit-context" class="bandit-context-grid">
+                        <div class="empty-state">No query yet. Search a memory in Adaptive mode to see the context vector.</div>
+                    </div>
+                </div>
+
+                <!-- Exploration parameter -->
+                <div class="bandit-section">
+                    <h3>Exploration Parameter (alpha)</h3>
+                    <p class="bandit-hint">Higher alpha = more exploration of uncertain arms. Lower = exploits the arm with the best learned theta.</p>
+                    <div class="slider-row">
+                        <span>Exploit</span>
+                        <input type="range" id="alpha-slider" min="0.01" max="5.0" step="0.01" value="1.0">
+                        <span>Explore</span>
+                        <span id="alpha-value" class="slider-val">1.00</span>
                     </div>
                 </div>
             </section>
 
             <section class="glass-panel">
-                <h2>📖 Feedback History</h2>
-                <div id="bandit-history" class="bandit-history"></div>
+                <h2>Learned Theta Vectors (per arm)</h2>
+                <p class="sim-subtitle">Each arm's theta is A^-1 b — the learned linear mapping from context features to expected reward.</p>
+                <div id="bandit-theta" class="bandit-theta-table"></div>
 
                 <div class="bandit-section" style="margin-top:1.5rem">
-                    <h3>Weight Evolution Chart</h3>
-                    <div style="height:250px"><canvas id="banditChart"></canvas></div>
+                    <h2>Feedback History</h2>
+                    <div id="bandit-history" class="bandit-history"></div>
+                </div>
+
+                <div class="bandit-section" style="margin-top:1.5rem">
+                    <h3>UCB Score Evolution</h3>
+                    <div style="height:220px"><canvas id="banditChart"></canvas></div>
                 </div>
             </section>
         </div>
     </div>
+
 
     <!-- ─── TAB: SIMULATION ─── -->
     <div id="tab-simulation" class="tab-panel hidden">
